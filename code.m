@@ -18,7 +18,7 @@ close all;
 
 % get initial conditions for the 1D Riemann problem
 GAMMA = 2.;
-Bx    = 0.75;
+Bx    = 0.75; % Bx = 0.;
 
 [x, dx, state] = getInitialCondition();
 U = convertStateToU(state, GAMMA, Bx);
@@ -35,7 +35,7 @@ xlabel('x')
 
 % time stepping iteration
 t = 0.;
-t_end = 0.2;
+t_end = 0.2; %t_end = 0.012;
 CFL_number = 0.8;
 step_counter = 0;
 tic
@@ -69,12 +69,22 @@ toc
 state = convertUToState(U, GAMMA, Bx);
 rho = state(1, :); vx = state(2, :); vy = state(3, :); By = state(5, :); p = state(7, :);
 figure();
+
 sgtitle('Simulation results for the 1D Riemann problem [FIG. 2]');
 subplot(3,2,[1,2]); plot(x, rho, '.'); xlabel('x'); ylabel('\rho'); ylim([0. 1.25]);
 subplot(3,2,3);     plot(x, vx, '.');  xlabel('x'); ylabel('v_x');  ylim([-.3 .7]);
 subplot(3,2,4);     plot(x, vy, '.');  xlabel('x'); ylabel('v_y');  ylim([-1.7 .1]);
 subplot(3,2,5);     plot(x, By, '.');  xlabel('x'); ylabel('B_y');  ylim([-1.1 1.1]);
 subplot(3,2,6);     plot(x, p, '.');   xlabel('x'); ylabel('p');    ylim([0. 1.1]);
+
+%{
+sgtitle('Simulation results for the 1D Riemann problem [FIG. 4]');
+v = sqrt(vx.^2 + vy.^2);
+subplot(2,2,1); plot(x, rho, '.');   xlabel('x'); ylabel('\rho'); ylim([0. 1.2]);
+subplot(2,2,2); plot(x, v, '.');     xlabel('x'); ylabel('v');    ylim([-5. 35.]);
+subplot(2,2,3); plot(x, By, '.');    xlabel('x'); ylabel('B_y');  ylim([-3.5 1.5]);
+subplot(2,2,4); semilogy(x, p, '.'); xlabel('x'); ylabel('p');    ylim([.5e-1 2e3]);
+%}
 
 save('state.mat', 'state');
 
@@ -83,7 +93,7 @@ save('state.mat', 'state');
 % Initial conditions for [3.1 One-Dimensional Riemann Problems]
 function [x, dx, state] = getInitialCondition()
     % spatial resolution setup
-    grid_count = 800 + 1;
+    grid_count = 800 + 1; % grid_count = 200 + 1;
     x_min = -1.;
     x_max = +1.;
     dx = (x_max - x_min) / (grid_count - 1);
@@ -101,7 +111,7 @@ function [x, dx, state] = getInitialCondition()
 
     % fill in initial values
     for i = 1:grid_count
-        x(i) = (i - 1) * dx + x_min;% + dx / 2.;
+        x(i) = (i - 1) * dx + x_min;
         if x(i) < 0.
             rho(i) = +1.000;
             vx(i)  = +0.;
@@ -109,7 +119,7 @@ function [x, dx, state] = getInitialCondition()
             vz(i)  = +0.;
             By(i)  = +1.;
             Bz(i)  = +0.;
-            p(i)   = +1.;
+            p(i)   = +1.; % p(i) = +1000.;
         elseif x(i) == 0. % average of two sides at the discontinuity
             rho(i) = +0.5625;
             vx(i)  = +0.;
@@ -117,7 +127,7 @@ function [x, dx, state] = getInitialCondition()
             vz(i)  = +0.;
             By(i)  = +0.;
             Bz(i)  = +0.;
-            p(i)   = +0.55;
+            p(i)   = +0.55; % p(i) = +500.05;
         else
             rho(i) = +0.125;
             vx(i)  = +0.;
@@ -272,8 +282,8 @@ function [F_hat_right, F_hat_left] = getF_hat(U, i, GAMMA, Bx)
         Phi_N_plus = getPhiN(F_i_s_plus(2) - F_i_s_plus(1), F_i_s_plus(3) - F_i_s_plus(2), ...
             F_i_s_plus(4) - F_i_s_plus(3), F_i_s_plus(5) - F_i_s_plus(4));
         F_i_s_minus = zeros(5, 1);
-        for j = 5:1
-            F_i_s_minus(j) = (dot(L(s, :), F_U(:, i+j+1)) - alpha_s(s) * dot(L(s, :), U_padded(:, i+j+1))) / 2.;
+        for j = 1:5
+            F_i_s_minus(6-j) = (dot(L(s, :), F_U(:, i+j+1)) - alpha_s(s) * dot(L(s, :), U_padded(:, i+j+1))) / 2.;
         end
         Phi_N_minus = getPhiN(F_i_s_minus(1) - F_i_s_minus(2), F_i_s_minus(2) - F_i_s_minus(3), ...
             F_i_s_minus(3) - F_i_s_minus(4), F_i_s_minus(4) - F_i_s_minus(5));
@@ -297,14 +307,13 @@ function [F_hat_right, F_hat_left] = getF_hat(U, i, GAMMA, Bx)
         Phi_N_plus = getPhiN(F_i_s_plus(2) - F_i_s_plus(1), F_i_s_plus(3) - F_i_s_plus(2), ...
             F_i_s_plus(4) - F_i_s_plus(3), F_i_s_plus(5) - F_i_s_plus(4));
         F_i_s_minus = zeros(5, 1);
-        for j = 5:1
-            F_i_s_minus(j) = (dot(L(s, :), F_U(:, i+j)) - alpha_s(s) * dot(L(s, :), U_padded(:, i+j))) / 2.;
+        for j = 1:5
+            F_i_s_minus(6-j) = (dot(L(s, :), F_U(:, i+j)) - alpha_s(s) * dot(L(s, :), U_padded(:, i+j))) / 2.;
         end
         Phi_N_minus = getPhiN(F_i_s_minus(1) - F_i_s_minus(2), F_i_s_minus(2) - F_i_s_minus(3), ...
             F_i_s_minus(3) - F_i_s_minus(4), F_i_s_minus(4) - F_i_s_minus(5));
         F_hat_left = F_hat_left + (-Phi_N_plus + Phi_N_minus) .* R(s, :)'; % Eqn. (2.17)
     end
-    
 
 end
 
@@ -312,8 +321,6 @@ function alpha_s = getMaxEigenvalue(state, GAMMA, Bx)
 
     rho = state(1, :); vx = state(2, :);
     By  = state(5, :); Bz = state(6, :); p = state(7, :);
-
-    %v = sqrt(vx.^2 + vy.^2 + vz.^2);
 
     grid_count = size(state, 2);
 
@@ -555,6 +562,7 @@ function Phi_N = getPhiN(a, b, c, d)
     IS_0    = 13. * (a - b)^2 + 3. * (a - 3. * b)^2;
     IS_1    = 13. * (b - c)^2 + 3. * (b + c)^2;
     IS_2    = 13. * (c - d)^2 + 3. * (3. * c - d)^2;
+
     alpha_0 = 1. / (epsilon + IS_0)^2;
     alpha_1 = 6. / (epsilon + IS_1)^2;
     alpha_2 = 3. / (epsilon + IS_2)^2;
