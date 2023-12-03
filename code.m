@@ -24,15 +24,6 @@ Bx    = 0.75;
 U = convertStateToU(state, GAMMA, Bx);
 rho = state(1, :); By = state(5, :); p = state(7, :);
 
-% visualize the initialization
-figure(); hold on
-title('initial conditions for the 1D Riemann problem')
-plot(x, rho, '--'); 
-plot(x, By , '-.');
-plot(x, p); hold off
-legend('$\rho$', '$B_y$', '$p$', 'Interpreter', 'latex');
-xlabel('x')
-
 % time stepping iteration
 t = 0.;
 t_end = 0.2; %t_end = 0.012;
@@ -542,6 +533,12 @@ function [L, R] = getLReigenvector(state, i, GAMMA, Bx)
     if B_y^2 + B_z^2 > delta * B^2 || GAMMA * p - B_x^2 > delta * GAMMA * p
         alpha_f = sqrt(a^2 - c_s^2) / sqrt(c_f^2 - c_s^2);
         alpha_s = sqrt(c_f^2 - a^2) / sqrt(c_f^2 - c_s^2);
+        if a^2 - c_s^2 < 0.
+            alpha_f = 0.;
+        end
+        if c_f^2 - a^2 < 0.
+            alpha_s = 0.;
+        end
     else
         alpha_f = 1. / sqrt(2);
         alpha_s = 1. / sqrt(2);
