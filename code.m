@@ -18,7 +18,7 @@ close all;
 
 % get initial conditions for the 1D Riemann problem
 GAMMA = 2.;
-Bx    = 0.75; % Bx = 0.;
+Bx    = 0.75;
 
 [x, dx, state] = getInitialCondition();
 U = convertStateToU(state, GAMMA, Bx);
@@ -62,6 +62,7 @@ while t < t_end
     t = t + dt;
     step_counter = step_counter + 1;
     fprintf("[step #%d] t = %.3e [dt = %.2e]\n", step_counter, t, dt);
+
 end
 toc
 
@@ -70,12 +71,14 @@ state = convertUToState(U, GAMMA, Bx);
 rho = state(1, :); vx = state(2, :); vy = state(3, :); By = state(5, :); p = state(7, :);
 figure();
 
+
 sgtitle('Simulation results for the 1D Riemann problem [FIG. 2]');
 subplot(3,2,[1,2]); plot(x, rho, '.'); xlabel('x'); ylabel('\rho'); ylim([0. 1.25]);
 subplot(3,2,3);     plot(x, vx, '.');  xlabel('x'); ylabel('v_x');  ylim([-.3 .7]);
 subplot(3,2,4);     plot(x, vy, '.');  xlabel('x'); ylabel('v_y');  ylim([-1.7 .1]);
 subplot(3,2,5);     plot(x, By, '.');  xlabel('x'); ylabel('B_y');  ylim([-1.1 1.1]);
 subplot(3,2,6);     plot(x, p, '.');   xlabel('x'); ylabel('p');    ylim([0. 1.1]);
+
 
 %{
 sgtitle('Simulation results for the 1D Riemann problem [FIG. 4]');
@@ -89,6 +92,131 @@ subplot(2,2,4); semilogy(x, p, '.'); xlabel('x'); ylabel('p');    ylim([.5e-1 2e
 save('state.mat', 'state');
 
 %% Function implementations
+
+function [x, dx, state] = initializerForIntermediateShock()
+
+    GAMMA = 5. / 3.;
+
+    grid_count = 2560 + 1;
+    x_min = +0.;
+    x_max = +1.;
+    dx = (x_max - x_min) / (grid_count - 1);
+
+    % define arrays for each variable
+    state = zeros(7, grid_count);   % state vector/matrix
+    x     = zeros(grid_count, 1);   % x coordinate
+    rho   = zeros(size(x));         % density
+    vx    = zeros(size(x));         % velocity in x direction
+    vy    = zeros(size(x));         % velocity in y direction
+    vz    = zeros(size(x));         % velocity in z direction
+    Bx    = zeros(size(x));
+    By    = zeros(size(x));         % magnetic field in y direction
+    Bz    = zeros(size(x));         % magnetic field in z direction
+    p     = zeros(size(x));         % pressure
+
+    for i = 1:grid_count
+        x(i)  = (i - 1) * dx + x_min;
+        rho(i) = 1.;   
+        Bx(i) = 1.;
+        By(i) = .5 * sin(2. * pi * x(i));
+        p(i) = 1.;
+    end
+
+    for i = 2:grid_count
+        delta = 1e-12;
+        
+        v = sqrt(vx(i-1).^2 + vy(i-1).^2);
+        B = sqrt(Bx(i-1).^2 + By(i-1).^2);
+    
+        b_x = Bx(i-1) / sqrt(rho(i-1));
+        b_y = By(i-1) / sqrt(rho(i-1));
+        b_z = Bz(i-1) / sqrt(rho(i-1));
+        b   = sqrt(b_x^2 + b_y^2 + b_z^2);
+        a   = sqrt(GAMMA * p(i-1) / rho(i-1));
+        c_f = sqrt((a^2 + b^2 + sqrt((a^2 + b^2)^2 - 4. * a^2 * b_x^2)) / 2.);
+        c_s = sqrt((a^2 + b^2 - sqrt((a^2 + b^2)^2 - 4. * a^2 * b_x^2)) / 2.); 
+        if By(i-1)^2 + Bz(i-1)^2 > delta * B^2
+            beta_y = By(i-1) / sqrt(By(i-1)^2 + Bz(i-1)^2);
+            beta_z = Bz(i-1) / sqrt(By(i-1)^2 + Bz(i-1)^2);
+        else
+            beta_y = 1. / sqrt(2);
+            beta_z = 1. / sqrt(2);
+        end
+        if By(i-1)^2 + Bz(i-1)^2 > delta * B^2 || GAMMA * p(i-1) - Bx(i-1)^2 > delta * GAMMA * p(i-1)
+            alpha_f = sqrt(a^2 - c_s^2) / sqrt(c_f^2 - c_s^2);
+            alpha_s = sqrt(c_f^2 - a^2) / sqrt(c_f^2 - c_s^2);
+        else
+            alpha_f = 1. / sqrt(2);
+            alpha_s = 1. / sqrt(2);
+        end
+        if Bx(i-1) >= 0.
+            sgn_B_x = +1.;
+        else
+            sgn_B_x = -1.;
+        end
+        %gamma_1 = (GAMMA - 1.) / 2.;
+        gamma_2 = (GAMMA - 2.) / (GAMMA - 1.);
+        %tau     = (GAMMA - 1.) / a^2;
+        %Gamma_f = alpha_f * c_f * vx(i-1) - alpha_s * c_s * sgn_B_x * (beta_y * vy(i-1) + beta_z * vz(i-1));
+        %Gamma_a = sgn_B_x * (beta_z * vy(i-1) - beta_y * vz(i-1));
+        Gamma_s = alpha_s * c_s * vx(i-1) + alpha_f * c_f * sgn_B_x * (beta_y * vy(i-1) + beta_z * vz(i-1));
+        
+        R = zeros(7, 1);
+        R(1) = alpha_s;
+        R(2) = alpha_s * (vx(i-1) + c_s);
+        R(3) = alpha_s * vy(i-1) + c_f * alpha_f * beta_y * sgn_B_x;
+        R(4) = alpha_s * vz(i-1) + c_f * alpha_f * beta_z * sgn_B_x;
+        R(5) = -a * alpha_f * beta_y / sqrt(rho(i-1));
+        R(6) = -a * alpha_f * beta_z / sqrt(rho(i-1));
+        R(7) = alpha_s * (v^2 / 2. + c_s^2 - gamma_2 * a^2) + Gamma_s;
+
+        U = zeros(7, 1);
+        e = rho(i-1) .* (vx(i-1).^2 + vy(i-1).^2) / 2. ...
+            + (Bx(i-1).^2 + By(i-1).^2) / 2. + p(i-1) / (GAMMA - 1.);
+    
+        U(1, :) = rho(i-1);
+        U(2, :) = rho(i-1) .* vx(i-1);
+        U(3, :) = rho(i-1) .* vy(i-1);
+        U(4, :) = rho(i-1) .* vz(i-1);
+        U(5, :) = By(i-1);
+        U(6, :) = Bz(i-1);
+        U(7, :) = p(i-1);
+
+        dU = R;
+        dBydx = .5*cos(2.*pi*x(i-1))*2.*pi;
+        dU(1) = dBydx * By(i-1) / (c_s^2 - a^2);
+        dU(2) = dBydx * (vx(i-1) + c_s) * By(i-1) / (c_s^2 - a^2);
+        dU(3) = dBydx * (a^2*Bx(i-1) - c_s^2 + c_s*vy(i-1)*By(i-1)) / (c_s^3 - c_s*a^2);
+        dU(4) = 0.;
+        dU(5) = 0.;
+        dU(6) = 0.;
+        dU(7) = dBydx * a^2 * By(i-1) / (c_s^2 - a^2);
+        U = U + dU * dx;
+
+        rho(i)     = U(1, :);
+        rho_vx  = U(2, :);
+        rho_vy  = U(3, :);
+        rho_vz  = U(4, :);
+        %By(i)      = U(5, :);
+        Bz(i)      = U(6, :);
+        p(i)       = U(7, :);
+    
+        vx(i) = rho_vx ./ rho(i);
+        vy(i) = rho_vy ./ rho(i);
+        vz(i) = rho_vz ./ rho(i);
+        %p(i)  = (GAMMA - 1.) .* (e - rho(i) .* (vx(i).^2 + vy(i).^2) / 2. ...
+        %    - (Bx(i).^2 + By(i).^2 + Bz(i).^2) / 2.);
+    end
+
+    state(1, :) = rho;
+    state(2, :) = vx;
+    state(3, :) = vy;
+    state(4, :) = vz;
+    state(5, :) = By;
+    state(6, :) = Bz;
+    state(7, :) = p;
+
+end
 
 % Initial conditions for [3.1 One-Dimensional Riemann Problems]
 function [x, dx, state] = getInitialCondition()
@@ -205,11 +333,10 @@ end
 % CFL condition evaluation
 function dt = getCFL(U, dx, CFL_number, GAMMA, Bx)
     state = convertUToState(U, GAMMA, Bx);
-    vx = state(2, :);
-    vx_max = max(abs(vx));
+    vx = state(2, :);   
+    vx = abs(vx)';
     c_f = getCf(state, GAMMA, Bx);
-    c_f_max = max(c_f);
-    dt = CFL_number * dx / max(vx_max + c_f_max); % Eqn. (3.2)
+    dt = CFL_number * dx / max(vx + c_f);
 end
 
 function c_f = getCf(state, GAMMA, Bx)
@@ -254,10 +381,20 @@ function [F_hat_right, F_hat_left] = getF_hat(U, i, GAMMA, Bx)
     for j = 1:grid_count
         U_padded(:, j + 3) = U(:, j); % copy each value
     end
+
+    % normal boundary condition
     for j = 1:3
         U_padded(:, j) = U(:, 1); % copy boundary value (left)
         U_padded(:, j + grid_count + 3) = U(:, grid_count); % copy boundary value (right)
     end
+
+    % periodic boundary condition
+    %{
+    for j = 1:3
+        U_padded(:, j) = U(:, grid_count + j - 3); % copy boundary value (left)
+        U_padded(:, j + grid_count + 3) = U(:, j); % copy boundary value (right)
+    end
+    %}
 
     state = convertUToState(U_padded, GAMMA, Bx);
     F_U = getF(U_padded, GAMMA, Bx);
