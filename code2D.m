@@ -23,7 +23,7 @@ U = convertStateToU(state, GAMMA);
 
 % time stepping iteration
 t = 0.;
-t_end = 3.0;
+t_end = 2.0;
 CFL_number = 0.8;
 step_counter = 0;
 tic
@@ -45,6 +45,8 @@ while t < t_end
     L_U_3 = getL_U(U_3, dx, GAMMA);
     U_4   = U_3 + dt / 6. * (L_U_0 + 2. * L_U_1 - 4. * L_U_2 + L_U_3);
     U     = U_4;
+
+    %U     = divFreeCorrection(U, dx, GAMMA);
 
     % advance time
     t = t + dt;
@@ -395,6 +397,13 @@ function alpha_s = getMaxEigenvalueX(state, GAMMA)
         B_y_i = (B_y(i) + B_y(i + 1)) / 2.;
         B_z_i = (B_z(i) + B_z(i + 1)) / 2.;
         p_i   = (p(i) + p(i + 1)) / 2.;
+
+        rho_i = rho(i);
+        v_x_i = v_x(i);
+        B_x_i = B_x(i);
+        B_y_i = B_y(i);
+        B_z_i = B_z(i);
+        p_i   = p(i);
     
         b_x = B_x_i / sqrt(rho_i);
         b_y = B_y_i / sqrt(rho_i);
@@ -455,6 +464,13 @@ function alpha_s = getMaxEigenvalueY(state, GAMMA)
         B_z_i = (B_z(i) + B_z(i + 1)) / 2.;
         p_i   = (p(i) + p(i + 1)) / 2.;
     
+        rho_i = rho(i);
+        v_y_i = v_y(i);
+        B_x_i = B_x(i);
+        B_y_i = B_y(i);
+        B_z_i = B_z(i);
+        p_i   = p(i);
+
         b_x = B_x_i / sqrt(rho_i);
         b_y = B_y_i / sqrt(rho_i);
         b_z = B_z_i / sqrt(rho_i);
@@ -538,7 +554,7 @@ function [L, R] = getLReigenvectorX(state, i, GAMMA)
         beta_y = 1. / sqrt(2);
         beta_z = 1. / sqrt(2);
     end
-    if B_y^2 + B_z^2 > delta * B^2 || GAMMA * p - B_x^2 > delta * GAMMA * p
+    if B_y^2 + B_z^2 > delta * B^2 || abs(GAMMA * p - B_x^2) > delta * GAMMA * p
         alpha_f = sqrt(a^2 - c_s^2) / sqrt(c_f^2 - c_s^2);
         alpha_s = sqrt(c_f^2 - a^2) / sqrt(c_f^2 - c_s^2);
         if a^2 - c_s^2 < 0.
@@ -751,7 +767,7 @@ function [L, R] = getLReigenvectorY(state, i, GAMMA)
         beta_y = 1. / sqrt(2);
         beta_z = 1. / sqrt(2);
     end
-    if B_y^2 + B_z^2 > delta * B^2 && GAMMA * p - B_x^2 > delta * GAMMA * p
+    if B_y^2 + B_z^2 > delta * B^2 && abs(GAMMA * p - B_x^2) > delta * GAMMA * p
         alpha_f = sqrt(a^2 - c_s^2) / sqrt(c_f^2 - c_s^2);
         alpha_s = sqrt(c_f^2 - a^2) / sqrt(c_f^2 - c_s^2);
         if a^2 - c_s^2 < 0.
@@ -986,5 +1002,98 @@ function Phi_N = getPhiN(a, b, c, d)
     omega_2 = alpha_2 / (alpha_0 + alpha_1 + alpha_2);
 
     Phi_N = omega_0 * (a - 2. * b + c) / 3. + (omega_2 - 1. / 2.) * (b - 2. * c + d) / 6.;
+
+end
+
+function U_c = divFreeCorrection(U, dx, GAMMA)
+
+    grid_count = size(U, 2:3);
+
+    U_padded = zeros(8, grid_count(1) + 6, grid_count(2) + 6); % boundary padding (3 on each side)
+    for i = 1:grid_count(1)
+        for j = 1:grid_count(2)
+            U_padded(:, i + 3, j + 3) = U(:, i, j); % copy each value
+        end
+    end
+    % periodic boundary condition
+    for i = 1:3
+        U_padded(:, i, 4:4+grid_count(2)-1) = U(:, grid_count(1) + i - 3, :); % copy boundary value (left)
+        U_padded(:, i + grid_count(1) + 3, 4:4+grid_count(2)-1) = U(:, i, :); % copy boundary value (right)
+    end
+    for j = 1:3
+        U_padded(:, 4:4+grid_count(1)-1, j) = U(:, :, grid_count(2) + j - 3); % copy boundary value (left)
+        U_padded(:, 4:4+grid_count(1)-1, j + grid_count(2) + 3) = U(:, :, j); % copy boundary value (right)
+    end
+
+    state_padded = convertUToState(U_padded, GAMMA);
+
+    B_x = state_padded(5, :, :); B_y  = state_padded(6, :, :);
+
+    A = sparse(grid_count(1) * grid_count(2), grid_count(1) * grid_count(2)); b = zeros(grid_count(1) * grid_count(2), 1);
+
+    counter = 1;
+    for i = 4:4+grid_count(1)-1
+        for j = 4:4+grid_count(2)-1
+            b(counter) = b(counter) - (B_x(1, i+1, j  ) - B_x(1, i-1, j  )) / dx(1);
+            b(counter) = b(counter) - (B_y(1,   i, j+1) - B_y(1,   i, j-1)) / dx(2);
+            counter = counter + 1;
+        end
+    end
+    for i = 1:grid_count(1)
+        for j = 1:grid_count(2)
+            index = ((i - 1) * grid_count(2) + j);
+            top    = (index + grid_count(2));
+            bottom = (index - grid_count(2));
+            right  = (index + 1);
+            left   = (index - 1);
+            if i == 1
+                bottom = ((grid_count(1) - 1) * grid_count(2) + j);
+            end
+            if i == grid_count(1)
+                top = j;
+            end
+            if j == 1
+                left = ((i - 1) * grid_count(2) + grid_count(2));
+            end
+            if j == grid_count(2)
+                right = ((i - 1) * grid_count(2) + 1);
+            end
+            A(index, top)    = +1. / dx(1)^2;
+            A(index, bottom) = +1. / dx(1)^2;
+            A(index, right)  = +1. / dx(2)^2;
+            A(index, left)   = +1. / dx(2)^2;
+            A(index, index)  = -2. / dx(1)^2 - 2. / dx(2)^2;
+        end
+    end
+    
+    phi = A \ b;
+
+    state = convertUToState(U, GAMMA);
+
+    for i = 1:grid_count(1)
+        for j = 1:grid_count(2)
+            index = ((i - 1) * grid_count(2) + j);
+            top    = (index + grid_count(2));
+            bottom = (index - grid_count(2));
+            right  = (index + 1);
+            left   = (index - 1);
+            if i == 1
+                bottom = ((grid_count(1) - 1) * grid_count(2) + j);
+            end
+            if i == grid_count(1)
+                top = j;
+            end
+            if j == 1
+                left = ((i - 1) * grid_count(2) + grid_count(2));
+            end
+            if j == grid_count(2)
+                right = ((i - 1) * grid_count(2) + 1);
+            end
+            state(5, i, j) = state(5, i, j) + (phi(top) - phi(bottom)) / 2. / dx(1);
+            state(6, i, j) = state(6, i, j) + (phi(right) - phi(left)) / 2. / dx(2);
+        end
+    end
+
+    U_c = convertStateToU(state, GAMMA);
 
 end
